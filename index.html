@@ -1,0 +1,1216 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>圓底達摩不倒翁 3D 展示 (Three.js)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Serif+TC:wght@700;900&display=swap" rel="stylesheet" />
+  <style>
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: radial-gradient(circle at 50% 42%, #faf7f2 0%, #ede6db 65%, #dfd5c5 100%);
+      user-select: none;
+    }
+    #canvas-container {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+      touch-action: none;
+    }
+    .serif-title {
+      font-family: 'Noto Serif TC', serif;
+    }
+    .glass-panel {
+      background: rgba(255, 253, 249, 0.84);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(185, 28, 28, 0.14);
+      box-shadow: 0 12px 32px -8px rgba(45, 25, 20, 0.14);
+      transition: all 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .collapsible-body {
+      display: grid;
+      grid-template-rows: 1fr;
+      transition: grid-template-rows 0.28s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.22s ease, margin-top 0.28s ease;
+      opacity: 1;
+    }
+    .collapsible-body > div {
+      overflow: hidden;
+    }
+    .panel-collapsed .collapsible-body {
+      grid-template-rows: 0fr;
+      opacity: 0;
+      margin-top: 0 !important;
+    }
+    .chevron-icon {
+      transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+    .panel-collapsed .chevron-icon {
+      transform: rotate(-90deg);
+    }
+  </style>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <!-- 3D WebGL Viewport -->
+  <div id="canvas-container"></div>
+
+  <!-- WebGL Error Fallback Banner (Hidden by default) -->
+  <div id="error-fallback" class="hidden fixed inset-0 z-50 flex items-center justify-center p-6 bg-stone-100/95">
+    <div class="max-w-md w-full bg-white rounded-2xl p-6 shadow-xl border border-red-200 text-center">
+      <div class="w-12 h-12 rounded-full bg-red-100 text-red-700 flex items-center justify-center mx-auto mb-3 font-bold text-xl">!</div>
+      <h2 class="text-lg font-bold text-stone-900 mb-2">3D 渲染環境初始化異常</h2>
+      <p id="error-message" class="text-sm text-stone-600 leading-relaxed mb-4">無法建立 WebGL 繪圖內容，請確認您的瀏覽器支援 WebGL 或重新整理頁面。</p>
+      <button type="button" onclick="window.location.reload()" class="px-4 py-2 rounded-xl bg-red-700 text-white text-sm font-medium hover:bg-red-600 cursor-pointer">
+        重新載入
+      </button>
+    </div>
+  </div>
+
+  <!-- Top-Right Master Collapse/Expand Button -->
+  <div class="fixed top-4 right-4 sm:top-6 sm:right-6 z-20 flex items-center gap-2">
+    <button
+      id="btn-toggle-all-ui"
+      type="button"
+      title="一鍵收合 / 展開所有面板"
+      class="glass-panel rounded-full px-3.5 py-2 text-xs font-medium text-stone-700 hover:text-red-700 hover:border-red-300/60 active:scale-95 flex items-center gap-1.5 cursor-pointer"
+    >
+      <svg id="icon-eye-open" class="w-4 h-4 text-red-700" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+        <path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+      </svg>
+      <svg id="icon-eye-closed" class="w-4 h-4 text-stone-500 hidden" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+      </svg>
+      <span id="label-toggle-all">收合界面</span>
+    </button>
+  </div>
+
+  <!-- Top-Left Collapsible Status & Telemetry Panel -->
+  <div id="status-panel" class="fixed top-4 left-4 sm:top-6 sm:left-6 z-10 max-w-[calc(100vw-8.5rem)] sm:max-w-sm">
+    <div class="glass-panel rounded-2xl px-4 py-3 sm:px-5 sm:py-3.5">
+      <div class="flex items-center justify-between gap-3">
+        <div class="flex items-center gap-2 min-w-0">
+          <span class="shrink-0 inline-block w-2.5 h-2.5 rounded-full bg-red-600 shadow-sm ring-2 ring-amber-400/70"></span>
+          <h1 class="serif-title text-base sm:text-lg font-bold text-stone-900 tracking-wide truncate">
+            福達摩不倒翁
+          </h1>
+          <span class="hidden sm:inline-block shrink-0 text-[11px] font-medium text-red-700 bg-red-50 px-2 py-0.5 rounded-full border border-red-200/70">
+            大圓底・低重心
+          </span>
+        </div>
+        <button
+          id="btn-toggle-status"
+          type="button"
+          aria-label="收合或展開狀態面板"
+          class="shrink-0 w-7 h-7 rounded-lg hover:bg-stone-200/70 active:scale-95 flex items-center justify-center text-stone-600 transition-colors cursor-pointer"
+        >
+          <svg class="chevron-icon w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+      </div>
+
+      <div class="collapsible-body mt-2">
+        <div>
+          <p class="text-xs text-stone-600 leading-relaxed">
+            局部原點 <code class="px-1.5 py-0.5 bg-stone-200/80 text-stone-800 rounded font-mono text-[11px]">(0, 0, 0)</code> 嚴格位於加寬圓底最下緣中心，點擊達摩或拖曳視角即可互動。
+          </p>
+          <div class="mt-2.5 pt-2 border-t border-stone-200/70 grid grid-cols-3 gap-1.5 text-[11px] font-mono">
+            <div class="bg-stone-100/80 rounded-lg px-2 py-1 text-center">
+              <div class="text-[10px] text-stone-400 font-sans">底部原點</div>
+              <div class="text-emerald-700 font-semibold">0, 0, 0</div>
+            </div>
+            <div class="bg-stone-100/80 rounded-lg px-2 py-1 text-center">
+              <div class="text-[10px] text-stone-400 font-sans">前後傾角</div>
+              <div id="telemetry-pitch" class="text-stone-700 font-semibold">0.0°</div>
+            </div>
+            <div class="bg-stone-100/80 rounded-lg px-2 py-1 text-center">
+              <div class="text-[10px] text-stone-400 font-sans">左右傾角</div>
+              <div id="telemetry-roll" class="text-stone-700 font-semibold">0.0°</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom-Right Collapsible Controls Panel -->
+  <div id="controls-panel" class="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-6 sm:bottom-6 z-10 flex justify-center sm:justify-end pointer-events-none">
+    <div class="glass-panel rounded-2xl p-3.5 sm:p-4 w-full max-w-sm pointer-events-auto">
+      <div class="flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2">
+          <svg class="w-4 h-4 text-red-700" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 6V4m0 2a2 2 0 100 4m0-4a2 2 0 110 4m-6 8a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4m6 6v10m6-2a2 2 0 100-4m0 4a2 2 0 110-4m0 4v2m0-6V4" />
+          </svg>
+          <span class="text-xs sm:text-[13px] font-semibold text-stone-800 tracking-wide">互動與模型設定</span>
+        </div>
+        <button
+          id="btn-toggle-controls"
+          type="button"
+          aria-label="收合或展開設定面板"
+          class="w-7 h-7 rounded-lg hover:bg-stone-200/70 active:scale-95 flex items-center justify-center text-stone-600 transition-colors cursor-pointer"
+        >
+          <svg class="chevron-icon w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+      </div>
+
+      <div class="collapsible-body mt-3">
+        <div>
+          <!-- Primary Action Buttons -->
+          <div class="grid grid-cols-3 gap-2">
+            <button
+              id="btn-wobble"
+              type="button"
+              class="py-2.5 px-2 rounded-xl bg-gradient-to-r from-red-700 via-red-600 to-red-700 hover:from-red-600 hover:to-red-500 active:scale-[0.98] text-white font-semibold text-xs shadow-md shadow-red-900/20 flex items-center justify-center gap-1 transition-all cursor-pointer"
+            >
+              <svg class="w-3.5 h-3.5 text-amber-300 shrink-0" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              <span>輕推搖擺</span>
+            </button>
+
+            <button
+              id="btn-reset-view"
+              type="button"
+              class="py-2.5 px-2 rounded-xl bg-stone-200/90 hover:bg-stone-300/80 active:scale-[0.98] text-stone-800 font-semibold text-xs flex items-center justify-center gap-1 transition-all cursor-pointer"
+            >
+              <svg class="w-3.5 h-3.5 text-stone-600 shrink-0" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
+              </svg>
+              <span>重置視角</span>
+            </button>
+
+            <button
+              id="btn-export-glb"
+              type="button"
+              class="py-2.5 px-2 rounded-xl bg-stone-800 hover:bg-stone-700 active:scale-[0.98] text-amber-50 font-semibold text-xs shadow-md shadow-stone-900/15 flex items-center justify-center gap-1 transition-all cursor-pointer"
+            >
+              <svg class="w-3.5 h-3.5 text-amber-300 shrink-0" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+              </svg>
+              <span id="export-label">匯出 GLB</span>
+            </button>
+          </div>
+
+          <div class="h-px bg-stone-200/80 my-3"></div>
+
+          <!-- Toggle Switches -->
+          <div class="space-y-2 text-xs sm:text-[13px] text-stone-700">
+            <label class="flex items-center justify-between cursor-pointer py-0.5">
+              <span class="flex items-center gap-2 font-medium">
+                <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+                顯示底部中心座標軸 (0,0,0)
+              </span>
+              <input id="toggle-axes" type="checkbox" checked class="accent-red-700 w-4 h-4 rounded cursor-pointer" />
+            </label>
+
+            <label class="flex items-center justify-between cursor-pointer py-0.5">
+              <span class="flex items-center gap-2 font-medium">
+                <span class="w-2 h-2 rounded-full bg-amber-500"></span>
+                自動緩慢旋轉 (Auto Rotate)
+              </span>
+              <input id="toggle-rotate" type="checkbox" class="accent-red-700 w-4 h-4 rounded cursor-pointer" />
+            </label>
+
+            <label class="flex items-center justify-between cursor-pointer py-0.5">
+              <span class="flex items-center gap-2 font-medium">
+                <span class="w-2 h-2 rounded-full bg-sky-500"></span>
+                網格線框拓撲 (Wireframe)
+              </span>
+              <input id="toggle-wireframe" type="checkbox" class="accent-red-700 w-4 h-4 rounded cursor-pointer" />
+            </label>
+          </div>
+
+          <!-- Coordinate Legend -->
+          <div id="origin-legend" class="mt-3 pt-2.5 border-t border-stone-200/70 flex items-center justify-between text-[11px] text-stone-500">
+            <span>軸向指示：</span>
+            <div class="flex items-center gap-2.5 font-mono">
+              <span class="text-red-600 font-semibold">X:紅</span>
+              <span class="text-green-600 font-semibold">Y:綠(上)</span>
+              <span class="text-blue-600 font-semibold">Z:藍(前)</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+    import { GLTFExporter } from 'three/addons/exporters/GLTFExporter.js';
+
+    function showFallbackError(msg) {
+      const fallback = document.getElementById('error-fallback');
+      const msgEl = document.getElementById('error-message');
+      if (msgEl && msg) msgEl.textContent = msg;
+      if (fallback) fallback.classList.remove('hidden');
+    }
+
+    /**
+     * ============================================================================
+     * 1. PROCEDURAL HIGH-RES TEXTURE GENERATOR (2048 x 1024)
+     *    Generates Albedo (color), Metalness (gold foil), Roughness, and Bump maps.
+     * ============================================================================
+     */
+    function createDarumaTextures() {
+      const width = 2048;
+      const height = 1024;
+      const cx = width * 0.5; // u = 0.5 aligns with +Z front face
+
+      // Color / Albedo Canvas
+      const colorCanvas = document.createElement('canvas');
+      colorCanvas.width = width;
+      colorCanvas.height = height;
+      const ctx = colorCanvas.getContext('2d');
+
+      // Metalness Canvas (white = metallic gold foil, black = red lacquer/paper)
+      const metalCanvas = document.createElement('canvas');
+      metalCanvas.width = width;
+      metalCanvas.height = height;
+      const mCtx = metalCanvas.getContext('2d');
+
+      // Roughness Canvas
+      const roughCanvas = document.createElement('canvas');
+      roughCanvas.width = width;
+      roughCanvas.height = height;
+      const rCtx = roughCanvas.getContext('2d');
+
+      // Bump Canvas (relief for brushstrokes & gold leaf)
+      const bumpCanvas = document.createElement('canvas');
+      bumpCanvas.width = width;
+      bumpCanvas.height = height;
+      const bCtx = bumpCanvas.getContext('2d');
+
+      // Base fills
+      mCtx.fillStyle = '#000000';
+      mCtx.fillRect(0, 0, width, height);
+
+      rCtx.fillStyle = '#383838'; // Glossy red lacquer base roughness
+      rCtx.fillRect(0, 0, width, height);
+
+      bCtx.fillStyle = '#808080';
+      bCtx.fillRect(0, 0, width, height);
+
+      // Rich traditional crimson lacquer gradient
+      const bgGrad = ctx.createLinearGradient(0, 0, 0, height);
+      bgGrad.addColorStop(0, '#d91616');
+      bgGrad.addColorStop(0.45, '#c81010');
+      bgGrad.addColorStop(0.85, '#b30d0d');
+      bgGrad.addColorStop(1, '#960a0a');
+      ctx.fillStyle = bgGrad;
+      ctx.fillRect(0, 0, width, height);
+
+      // Subtle handmade washi / papier-mache surface grain
+      for (let i = 0; i < 6500; i++) {
+        const gx = Math.random() * width;
+        const gy = Math.random() * height;
+        const gr = 0.8 + Math.random() * 2.2;
+        ctx.fillStyle = Math.random() > 0.5 ? 'rgba(255,255,255,0.025)' : 'rgba(60,0,0,0.03)';
+        ctx.beginPath();
+        ctx.arc(gx, gy, gr, 0, Math.PI * 2);
+        ctx.fill();
+
+        bCtx.fillStyle = Math.random() > 0.5 ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)';
+        bCtx.fillRect(gx, gy, 2, 2);
+      }
+
+      // Helper to mirror strokes symmetrically around cx
+      function drawMirrored(drawFn) {
+        drawFn(ctx, 1);
+        ctx.save();
+        ctx.translate(cx * 2, 0);
+        ctx.scale(-1, 1);
+        drawFn(ctx, -1);
+        ctx.restore();
+      }
+
+      // ========================================================================
+      // 2. FACE WINDOW (Ivory/Cream Arch on Upper Front)
+      // ========================================================================
+      function traceFacePath(context, inset = 0) {
+        const topY = 178 + inset;
+        const botY = 532 - inset;
+        const halfWTop = 264 - inset;
+        const halfWBot = 304 - inset;
+
+        context.beginPath();
+        context.moveTo(cx - halfWTop + 55, topY);
+        context.quadraticCurveTo(cx, topY - 22, cx + halfWTop - 55, topY);
+        context.quadraticCurveTo(cx + halfWTop + 20, topY + 5, cx + halfWBot, topY + 108);
+        context.bezierCurveTo(
+          cx + halfWBot + 35, topY + 215,
+          cx + halfWBot + 10, botY - 22,
+          cx + halfWBot - 82, botY - 5
+        );
+        context.quadraticCurveTo(cx, botY - 24, cx - halfWBot + 82, botY - 5);
+        context.bezierCurveTo(
+          cx - halfWBot - 10, botY - 22,
+          cx - halfWBot - 35, topY + 215,
+          cx - halfWBot, topY + 108
+        );
+        context.quadraticCurveTo(cx - halfWTop - 20, topY + 5, cx - halfWTop + 55, topY);
+        context.closePath();
+      }
+
+      // Soft dark border shadow around face cutout
+      ctx.save();
+      traceFacePath(ctx, -5);
+      ctx.fillStyle = 'rgba(55, 5, 5, 0.55)';
+      ctx.fill();
+      ctx.restore();
+
+      // Warm ivory face base
+      const faceGrad = ctx.createRadialGradient(cx, 355, 38, cx, 360, 325);
+      faceGrad.addColorStop(0, '#fcfaf5');
+      faceGrad.addColorStop(0.75, '#f6f1e7');
+      faceGrad.addColorStop(1, '#eae0cf');
+      traceFacePath(ctx, 0);
+      ctx.fillStyle = faceGrad;
+      ctx.fill();
+
+      // Slightly higher roughness on matte painted face
+      traceFacePath(rCtx, 0);
+      rCtx.fillStyle = '#707070';
+      rCtx.fill();
+
+      // Warm orange-ochre shading around eye sockets & cheeks
+      drawMirrored((c) => {
+        const eyeX = cx - 126;
+        const eyeY = 345;
+        const cheekGrad = c.createRadialGradient(eyeX - 10, eyeY + 18, 32, eyeX - 15, eyeY + 20, 140);
+        cheekGrad.addColorStop(0, 'rgba(235, 118, 35, 0.72)');
+        cheekGrad.addColorStop(0.55, 'rgba(240, 138, 52, 0.42)');
+        cheekGrad.addColorStop(1, 'rgba(240, 138, 52, 0)');
+        c.fillStyle = cheekGrad;
+        c.beginPath();
+        c.arc(eyeX - 10, eyeY + 18, 142, 0, Math.PI * 2);
+        c.fill();
+      });
+
+      // ========================================================================
+      // 3. EYEBROWS (Crane Motif / 鶴) & GLABELLA FURROWS
+      // ========================================================================
+      drawMirrored((c) => {
+        c.fillStyle = '#111111';
+        c.beginPath();
+        c.moveTo(cx - 24, 292);
+        c.bezierCurveTo(cx - 72, 258, cx - 148, 194, cx - 224, 214);
+        c.bezierCurveTo(cx - 268, 228, cx - 282, 282, cx - 262, 316);
+        c.bezierCurveTo(cx - 250, 282, cx - 234, 246, cx - 196, 242);
+        c.bezierCurveTo(cx - 148, 238, cx - 86, 278, cx - 24, 302);
+        c.closePath();
+        c.fill();
+
+        c.strokeStyle = '#141414';
+        c.lineCap = 'round';
+        const featherCount = 14;
+        for (let i = 0; i < featherCount; i++) {
+          const t = i / (featherCount - 1);
+          const startX = cx - 62 - t * 176;
+          const startY = 275 - Math.sin(t * Math.PI) * 36;
+          const endX = startX - 17 - t * 20;
+          const endY = startY + 24 + t * 26;
+          c.lineWidth = 3.1 - t * 1.0;
+          c.beginPath();
+          c.moveTo(startX, startY);
+          c.quadraticCurveTo((startX + endX) * 0.5 - 6, (startY + endY) * 0.5 + 8, endX, endY);
+          c.stroke();
+        }
+
+        // Glabella / frown mark
+        c.fillStyle = '#141414';
+        c.beginPath();
+        c.moveTo(cx - 13, 272);
+        c.bezierCurveTo(cx - 20, 240, cx - 45, 224, cx - 51, 238);
+        c.bezierCurveTo(cx - 55, 250, cx - 30, 267, cx - 13, 272);
+        c.fill();
+      });
+
+      // ========================================================================
+      // 4. EYES (Large Expressive Eyes with Metallic Gold Iris Ring)
+      // ========================================================================
+      drawMirrored((c) => {
+        const eyeX = cx - 124;
+        const eyeY = 345;
+
+        c.strokeStyle = '#181818';
+        c.lineWidth = 4.4;
+        c.beginPath();
+        c.arc(eyeX, eyeY + 4, 62, Math.PI * 1.08, Math.PI * 1.88);
+        c.stroke();
+
+        // White sclera
+        c.fillStyle = '#ffffff';
+        c.beginPath();
+        c.arc(eyeX, eyeY, 52, 0, Math.PI * 2);
+        c.fill();
+
+        c.strokeStyle = '#222222';
+        c.lineWidth = 3;
+        c.stroke();
+
+        // Gold Iris Ring
+        c.strokeStyle = '#d4a024';
+        c.lineWidth = 7.2;
+        c.beginPath();
+        c.arc(eyeX, eyeY, 47, 0, Math.PI * 2);
+        c.stroke();
+
+        // Large Black Pupil
+        c.fillStyle = '#0c0c0e';
+        c.beginPath();
+        c.arc(eyeX + 2, eyeY + 1, 32, 0, Math.PI * 2);
+        c.fill();
+
+        // Subtle highlight
+        c.fillStyle = 'rgba(255, 255, 255, 0.25)';
+        c.beginPath();
+        c.arc(eyeX - 9, eyeY - 10, 5.5, 0, Math.PI * 2);
+        c.fill();
+      });
+
+      // Gold iris ring in Metalness & Roughness maps
+      [cx - 124, cx + 124].forEach((eyeX) => {
+        mCtx.strokeStyle = '#ffffff';
+        mCtx.lineWidth = 7.5;
+        mCtx.beginPath();
+        mCtx.arc(eyeX, 345, 47, 0, Math.PI * 2);
+        mCtx.stroke();
+
+        rCtx.strokeStyle = '#303030';
+        rCtx.lineWidth = 7.5;
+        rCtx.beginPath();
+        rCtx.arc(eyeX, 345, 47, 0, Math.PI * 2);
+        rCtx.stroke();
+      });
+
+      // ========================================================================
+      // 5. NOSE, MOUTH, TORTOISE-SHELL CHEEK WHISKERS (亀) & CHIN BEARD
+      // ========================================================================
+      drawMirrored((c) => {
+        c.strokeStyle = '#d6221a';
+        c.lineWidth = 6.2;
+        c.lineCap = 'round';
+        c.beginPath();
+        c.moveTo(cx - 10, 422);
+        c.bezierCurveTo(cx - 25, 392, cx - 60, 396, cx - 68, 424);
+        c.stroke();
+      });
+
+      // Firm downturned crimson mouth
+      ctx.strokeStyle = '#d82018';
+      ctx.lineWidth = 9.5;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(cx - 84, 466);
+      ctx.quadraticCurveTo(cx, 446, cx + 84, 466);
+      ctx.stroke();
+
+      // Side cheek tortoise-shell (亀) whiskers
+      drawMirrored((c) => {
+        c.fillStyle = '#121212';
+        c.beginPath();
+        c.moveTo(cx - 254, 330);
+        c.bezierCurveTo(cx - 284, 384, cx - 274, 468, cx - 196, 498);
+        c.bezierCurveTo(cx - 148, 514, cx - 100, 508, cx - 72, 495);
+        c.bezierCurveTo(cx - 120, 492, cx - 168, 486, cx - 202, 460);
+        c.bezierCurveTo(cx - 235, 434, cx - 242, 378, cx - 254, 330);
+        c.closePath();
+        c.fill();
+
+        const fanOriginX = cx - 224;
+        const fanOriginY = 428;
+        const rays = 15;
+        for (let i = 0; i < rays; i++) {
+          const angle = -0.65 + (i / (rays - 1)) * 1.45;
+          const len = 74 + Math.sin((i / rays) * Math.PI) * 26;
+          const endX = fanOriginX + Math.cos(angle) * len;
+          const endY = fanOriginY + Math.sin(angle) * len * 0.72;
+
+          c.strokeStyle = '#141414';
+          c.lineWidth = 3.1;
+          c.beginPath();
+          c.moveTo(fanOriginX, fanOriginY);
+          c.quadraticCurveTo(
+            fanOriginX + Math.cos(angle) * len * 0.5,
+            fanOriginY + Math.sin(angle) * len * 0.35 - 6,
+            endX,
+            endY
+          );
+          c.stroke();
+        }
+
+        c.strokeStyle = '#dfb034';
+        c.lineWidth = 3.8;
+        c.beginPath();
+        c.arc(fanOriginX + 16, fanOriginY, 42, -0.55, 0.72);
+        c.stroke();
+      });
+
+      // Chin beard brushstrokes
+      drawMirrored((c) => {
+        c.strokeStyle = '#161616';
+        c.lineCap = 'round';
+        const beardStrokes = 13;
+        for (let i = 0; i < beardStrokes; i++) {
+          const t = i / (beardStrokes - 1);
+          const bx = cx - 8 - t * 122;
+          const by = 476 + t * 13;
+          c.lineWidth = 3.1 - t * 0.8;
+          c.beginPath();
+          c.moveTo(bx, by);
+          c.lineTo(bx - 13 - t * 13, by + 24 - t * 4);
+          c.stroke();
+        }
+      });
+
+      // ========================================================================
+      // 6. GOLD LEAF CALLIGRAPHY & ORNAMENTS ("福", Ribs, Side Kanji)
+      // ========================================================================
+      function paintGoldLayer(drawCallback) {
+        ctx.save();
+        ctx.fillStyle = '#ecc246';
+        ctx.strokeStyle = '#ecc246';
+        drawCallback(ctx);
+        ctx.restore();
+
+        mCtx.save();
+        mCtx.fillStyle = '#f2f2f2';
+        mCtx.strokeStyle = '#f2f2f2';
+        drawCallback(mCtx);
+        mCtx.restore();
+
+        rCtx.save();
+        rCtx.fillStyle = '#363636';
+        rCtx.strokeStyle = '#363636';
+        drawCallback(rCtx);
+        rCtx.restore();
+
+        bCtx.save();
+        bCtx.fillStyle = '#9c9c9c';
+        bCtx.strokeStyle = '#9c9c9c';
+        drawCallback(bCtx);
+        bCtx.restore();
+      }
+
+      paintGoldLayer((c) => {
+        c.lineCap = 'round';
+        c.lineJoin = 'round';
+
+        // --- A. Center Chest Calligraphy: 「福」 ---
+        const fukuY = 582;
+        c.save();
+        c.translate(cx, fukuY + 95);
+        c.scale(0.92, 1.08);
+        c.translate(-cx, -(fukuY + 95));
+
+        // Left radical: 示 (礻)
+        c.beginPath();
+        c.ellipse(cx - 64, fukuY + 8, 14, 7, 0.35, 0, Math.PI * 2);
+        c.fill();
+
+        c.lineWidth = 13;
+        c.beginPath();
+        c.moveTo(cx - 102, fukuY + 42);
+        c.lineTo(cx - 38, fukuY + 34);
+        c.quadraticCurveTo(cx - 65, fukuY + 82, cx - 108, fukuY + 118);
+        c.stroke();
+
+        c.lineWidth = 14;
+        c.beginPath();
+        c.moveTo(cx - 66, fukuY + 72);
+        c.quadraticCurveTo(cx - 68, fukuY + 125, cx - 64, fukuY + 172);
+        c.stroke();
+
+        c.lineWidth = 10;
+        c.beginPath();
+        c.moveTo(cx - 62, fukuY + 82);
+        c.lineTo(cx - 36, fukuY + 102);
+        c.stroke();
+
+        // Right component: 一 + 口 + 田
+        c.lineWidth = 12;
+        c.beginPath();
+        c.moveTo(cx - 18, fukuY + 16);
+        c.quadraticCurveTo(cx + 35, fukuY + 10, cx + 86, fukuY + 12);
+        c.stroke();
+
+        c.lineWidth = 10;
+        c.beginPath();
+        c.moveTo(cx - 8, fukuY + 38);
+        c.lineTo(cx + 68, fukuY + 35);
+        c.lineTo(cx + 62, fukuY + 64);
+        c.lineTo(cx - 4, fukuY + 66);
+        c.closePath();
+        c.stroke();
+
+        c.lineWidth = 11;
+        c.beginPath();
+        c.moveTo(cx - 18, fukuY + 86);
+        c.lineTo(cx + 84, fukuY + 82);
+        c.quadraticCurveTo(cx + 82, fukuY + 122, cx + 68, fukuY + 148);
+        c.lineTo(cx - 12, fukuY + 146);
+        c.closePath();
+        c.stroke();
+
+        c.lineWidth = 10;
+        c.beginPath();
+        c.moveTo(cx + 32, fukuY + 84);
+        c.lineTo(cx + 30, fukuY + 146);
+        c.moveTo(cx - 12, fukuY + 114);
+        c.lineTo(cx + 76, fukuY + 112);
+        c.stroke();
+
+        c.lineWidth = 13;
+        c.beginPath();
+        c.moveTo(cx - 42, fukuY + 162);
+        c.quadraticCurveTo(cx + 18, fukuY + 145, cx + 96, fukuY + 188);
+        c.stroke();
+        c.restore();
+
+        // --- B. Flanking Golden Vertical Ribs on Wide Belly ---
+        const ribOffsets = [148, 200, 252, 304, 355];
+        [-1, 1].forEach((dir) => {
+          ribOffsets.forEach((dx, idx) => {
+            const rx = cx + dir * dx;
+            const topR = 575 - idx * 8;
+            const botR = 738 - idx * 14;
+            c.lineWidth = 14 - idx * 0.7;
+            c.beginPath();
+            c.moveTo(rx, topR);
+            c.quadraticCurveTo(rx + dir * 18, (topR + botR) * 0.5, rx - dir * 8, botR);
+            c.stroke();
+          });
+        });
+
+        // --- C. Left & Right Auspicious Kanji ---
+        [-1, 1].forEach((dir) => {
+          c.lineWidth = 14;
+          c.beginPath();
+          c.moveTo(cx + dir * 255, 168);
+          c.quadraticCurveTo(cx + dir * 312, 182, cx + dir * 348, 208);
+          c.stroke();
+        });
+
+        c.font = '900 72px "Noto Serif TC", serif';
+        c.textAlign = 'center';
+        c.textBaseline = 'middle';
+
+        const leftChars = ['開', '運', '吉', '祥'];
+        leftChars.forEach((ch, i) => {
+          c.save();
+          c.translate(cx - 415, 265 + i * 95);
+          c.rotate(-0.08);
+          c.scale(1.05, 1.0);
+          c.fillText(ch, 0, 0);
+          c.restore();
+        });
+
+        const rightChars = ['家', '内', '安', '全'];
+        rightChars.forEach((ch, i) => {
+          c.save();
+          c.translate(cx + 415, 265 + i * 95);
+          c.rotate(0.08);
+          c.scale(1.05, 1.0);
+          c.fillText(ch, 0, 0);
+          c.restore();
+        });
+      });
+
+      const colorTex = new THREE.CanvasTexture(colorCanvas);
+      colorTex.colorSpace = THREE.SRGBColorSpace;
+      colorTex.anisotropy = 8;
+      colorTex.needsUpdate = true;
+
+      const metalTex = new THREE.CanvasTexture(metalCanvas);
+      metalTex.anisotropy = 8;
+      metalTex.needsUpdate = true;
+
+      const roughTex = new THREE.CanvasTexture(roughCanvas);
+      roughTex.anisotropy = 8;
+      roughTex.needsUpdate = true;
+
+      const bumpTex = new THREE.CanvasTexture(bumpCanvas);
+      bumpTex.anisotropy = 8;
+      bumpTex.needsUpdate = true;
+
+      return { colorTex, metalTex, roughTex, bumpTex };
+    }
+
+    /**
+     * ============================================================================
+     * 2. DARUMA WIDE ROUND-BOTTOM GEOMETRY (Local Origin Strictly at 0, 0, 0)
+     *    Voluminous, low-center-of-gravity hemispherical bottom + pear silhouette.
+     * ============================================================================
+     */
+    function createRoundBottomDarumaGeometry() {
+      const profilePoints = [
+        new THREE.Vector2(0.000, 0.000), // <--- EXACT BOTTOM CENTER ORIGIN (0, 0, 0)
+        new THREE.Vector2(0.280, 0.014),
+        new THREE.Vector2(0.550, 0.062),
+        new THREE.Vector2(0.800, 0.148),
+        new THREE.Vector2(1.015, 0.275),
+        new THREE.Vector2(1.185, 0.440),
+        new THREE.Vector2(1.305, 0.635),
+        new THREE.Vector2(1.370, 0.855),
+        new THREE.Vector2(1.390, 1.085), // Widest lower-mid belly (larger bottom volume)
+        new THREE.Vector2(1.365, 1.320),
+        new THREE.Vector2(1.305, 1.555),
+        new THREE.Vector2(1.225, 1.785), // Slightly narrower head region
+        new THREE.Vector2(1.125, 2.005),
+        new THREE.Vector2(0.985, 2.205),
+        new THREE.Vector2(0.795, 2.368),
+        new THREE.Vector2(0.555, 2.478),
+        new THREE.Vector2(0.285, 2.536),
+        new THREE.Vector2(0.000, 2.555), // Top crown center
+      ];
+
+      const spline = new THREE.SplineCurve(profilePoints);
+      const smoothPoints = spline.getPoints(80);
+
+      // Lock exact pole coordinates
+      smoothPoints[0].set(0, 0);
+      smoothPoints[smoothPoints.length - 1].set(0, 2.555);
+
+      // phiStart = Math.PI aligns u = 0.5 directly toward +Z (front)
+      const geometry = new THREE.LatheGeometry(smoothPoints, 96, Math.PI, Math.PI * 2);
+      geometry.computeVertexNormals();
+
+      // Verify minY is strictly 0
+      geometry.computeBoundingBox();
+      if (geometry.boundingBox && Math.abs(geometry.boundingBox.min.y) > 1e-6) {
+        geometry.translate(0, -geometry.boundingBox.min.y, 0);
+      }
+
+      return geometry;
+    }
+
+    /**
+     * ============================================================================
+     * 3. SCENE, LIGHTING, AND INTERACTIVE SIMULATION SETUP
+     * ============================================================================
+     */
+    function initApp() {
+      const container = document.getElementById('canvas-container');
+      if (!container) return;
+
+      let renderer;
+      try {
+        renderer = new THREE.WebGLRenderer({
+          antialias: true,
+          powerPreference: 'high-performance',
+        });
+      } catch (err) {
+        showFallbackError('您的裝置或瀏覽器無法啟動 WebGL 3D 加速。');
+        return;
+      }
+
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.08;
+      container.appendChild(renderer.domElement);
+
+      const scene = new THREE.Scene();
+
+      // Studio environment reflections for lacquer & gold foil
+      const pmremGenerator = new THREE.PMREMGenerator(renderer);
+      const envTexture = pmremGenerator.fromScene(new RoomEnvironment(), 0.04).texture;
+      scene.environment = envTexture;
+
+      const camera = new THREE.PerspectiveCamera(
+        38,
+        window.innerWidth / window.innerHeight,
+        0.1,
+        100
+      );
+      const defaultCamPos = new THREE.Vector3(0, 2.15, 6.2);
+      const defaultTarget = new THREE.Vector3(0, 1.22, 0);
+      camera.position.copy(defaultCamPos);
+
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.06;
+      controls.target.copy(defaultTarget);
+      controls.minDistance = 2.8;
+      controls.maxDistance = 12.0;
+      controls.maxPolarAngle = Math.PI * 0.56;
+      controls.update();
+
+      // Lighting
+      const hemiLight = new THREE.HemisphereLight(0xfffaf0, 0xd8cfc2, 0.72);
+      scene.add(hemiLight);
+
+      const keyLight = new THREE.DirectionalLight(0xffffff, 1.35);
+      keyLight.position.set(3.8, 6.2, 4.8);
+      keyLight.castShadow = true;
+      keyLight.shadow.mapSize.set(2048, 2048);
+      keyLight.shadow.camera.near = 1;
+      keyLight.shadow.camera.far = 18;
+      const d = 3.2;
+      keyLight.shadow.camera.left = -d;
+      keyLight.shadow.camera.right = d;
+      keyLight.shadow.camera.top = d;
+      keyLight.shadow.camera.bottom = -d;
+      keyLight.shadow.bias = -0.0004;
+      scene.add(keyLight);
+
+      const rimLight = new THREE.DirectionalLight(0xffe6c7, 0.65);
+      rimLight.position.set(-4.2, 3.8, -3.5);
+      scene.add(rimLight);
+
+      // Ground Contact Shadow & Subtle Polar Grid centered at (0, 0, 0)
+      const shadowGeo = new THREE.PlaneGeometry(14, 14);
+      const shadowMat = new THREE.ShadowMaterial({ opacity: 0.22 });
+      const shadowPlane = new THREE.Mesh(shadowGeo, shadowMat);
+      shadowPlane.rotation.x = -Math.PI / 2;
+      shadowPlane.position.y = 0;
+      shadowPlane.receiveShadow = true;
+      scene.add(shadowPlane);
+
+      const polarGrid = new THREE.PolarGridHelper(2.6, 8, 4, 64, 0xc8beb0, 0xdfd7ca);
+      polarGrid.position.y = 0.001;
+      scene.add(polarGrid);
+
+      // Build Daruma Model
+      const textures = createDarumaTextures();
+      const darumaGeo = createRoundBottomDarumaGeometry();
+
+      const darumaMat = new THREE.MeshPhysicalMaterial({
+        map: textures.colorTex,
+        metalnessMap: textures.metalTex,
+        roughnessMap: textures.roughTex,
+        bumpMap: textures.bumpTex,
+        bumpScale: 0.015,
+        metalness: 0.85,
+        roughness: 0.32,
+        clearcoat: 0.78,
+        clearcoatRoughness: 0.16,
+      });
+
+      // Pivot group strictly at world origin (0, 0, 0) = bottom center of round base
+      const darumaPivot = new THREE.Group();
+      darumaPivot.position.set(0, 0, 0);
+      scene.add(darumaPivot);
+
+      const darumaMesh = new THREE.Mesh(darumaGeo, darumaMat);
+      darumaMesh.name = 'Daruma_RoundBottom';
+      darumaMesh.castShadow = true;
+      darumaMesh.receiveShadow = true;
+      darumaMesh.position.set(0, 0, 0);
+      darumaPivot.add(darumaMesh);
+
+      // Visual Indicator for Bottom-Center Origin (0, 0, 0)
+      const originGroup = new THREE.Group();
+      originGroup.position.set(0, 0, 0);
+
+      const axesHelper = new THREE.AxesHelper(1.75);
+      originGroup.add(axesHelper);
+
+      const originDotGeo = new THREE.SphereGeometry(0.055, 24, 24);
+      const originDotMat = new THREE.MeshBasicMaterial({ color: 0x10b981 });
+      const originDot = new THREE.Mesh(originDotGeo, originDotMat);
+      originGroup.add(originDot);
+
+      const originRingGeo = new THREE.RingGeometry(0.11, 0.145, 48);
+      const originRingMat = new THREE.MeshBasicMaterial({
+        color: 0x10b981,
+        side: THREE.DoubleSide,
+      });
+      const originRing = new THREE.Mesh(originRingGeo, originRingMat);
+      originRing.rotation.x = -Math.PI / 2;
+      originRing.position.y = 0.002;
+      originGroup.add(originRing);
+
+      scene.add(originGroup);
+
+      // ========================================================================
+      // 4. ROLY-POLY WOBBLE PHYSICS & CLICK INTERACTION
+      // ========================================================================
+      const physics = {
+        angleX: 0,
+        angleZ: 0,
+        velX: 0,
+        velZ: 0,
+        stiffness: 46.0,
+        damping: 3.3,
+      };
+
+      function impulseDaruma(dirX = null, dirZ = null) {
+        const angle = Math.random() * Math.PI * 2;
+        const strength = 3.2 + Math.random() * 1.4;
+        physics.velX += dirX !== null ? dirX : Math.cos(angle) * strength;
+        physics.velZ += dirZ !== null ? dirZ : Math.sin(angle) * strength;
+      }
+
+      // Gentle welcome wobble on start
+      setTimeout(() => {
+        impulseDaruma(1.6, 2.4);
+      }, 300);
+
+      // Raycasting to tap/click the Daruma
+      const raycaster = new THREE.Raycaster();
+      const pointer = new THREE.Vector2();
+      let pointerDownPos = { x: 0, y: 0 };
+
+      renderer.domElement.addEventListener('pointerdown', (e) => {
+        pointerDownPos = { x: e.clientX, y: e.clientY };
+      });
+
+      renderer.domElement.addEventListener('pointerup', (e) => {
+        const dist = Math.hypot(e.clientX - pointerDownPos.x, e.clientY - pointerDownPos.y);
+        if (dist > 6) return; // Ignore camera drag
+
+        const rect = renderer.domElement.getBoundingClientRect();
+        pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+        pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+
+        raycaster.setFromCamera(pointer, camera);
+        const hits = raycaster.intersectObject(darumaMesh, false);
+        if (hits.length > 0) {
+          const hitPt = hits[0].point;
+          impulseDaruma(-hitPt.z * 3.0, hitPt.x * 3.0);
+        }
+      });
+
+      // ========================================================================
+      // 5. COLLAPSIBLE UI PANELS, TELEMETRY & GLB EXPORT
+      // ========================================================================
+      const statusPanel = document.getElementById('status-panel');
+      const controlsPanel = document.getElementById('controls-panel');
+      const btnToggleStatus = document.getElementById('btn-toggle-status');
+      const btnToggleControls = document.getElementById('btn-toggle-controls');
+      const btnToggleAllUi = document.getElementById('btn-toggle-all-ui');
+      const iconEyeOpen = document.getElementById('icon-eye-open');
+      const iconEyeClosed = document.getElementById('icon-eye-closed');
+      const labelToggleAll = document.getElementById('label-toggle-all');
+
+      const telemetryPitch = document.getElementById('telemetry-pitch');
+      const telemetryRoll = document.getElementById('telemetry-roll');
+
+      const btnWobble = document.getElementById('btn-wobble');
+      const btnResetView = document.getElementById('btn-reset-view');
+      const btnExportGlb = document.getElementById('btn-export-glb');
+      const exportLabel = document.getElementById('export-label');
+      const toggleAxes = document.getElementById('toggle-axes');
+      const toggleRotate = document.getElementById('toggle-rotate');
+      const toggleWireframe = document.getElementById('toggle-wireframe');
+      const originLegend = document.getElementById('origin-legend');
+
+      function syncCollapseAllButtonState() {
+        const bothCollapsed =
+          statusPanel.classList.contains('panel-collapsed') &&
+          controlsPanel.classList.contains('panel-collapsed');
+        if (bothCollapsed) {
+          iconEyeOpen.classList.add('hidden');
+          iconEyeClosed.classList.remove('hidden');
+          labelToggleAll.textContent = '展開界面';
+        } else {
+          iconEyeOpen.classList.remove('hidden');
+          iconEyeClosed.classList.add('hidden');
+          labelToggleAll.textContent = '收合界面';
+        }
+      }
+
+      btnToggleStatus?.addEventListener('click', () => {
+        statusPanel.classList.toggle('panel-collapsed');
+        syncCollapseAllButtonState();
+      });
+
+      btnToggleControls?.addEventListener('click', () => {
+        controlsPanel.classList.toggle('panel-collapsed');
+        syncCollapseAllButtonState();
+      });
+
+      btnToggleAllUi?.addEventListener('click', () => {
+        const bothCollapsed =
+          statusPanel.classList.contains('panel-collapsed') &&
+          controlsPanel.classList.contains('panel-collapsed');
+        if (bothCollapsed) {
+          statusPanel.classList.remove('panel-collapsed');
+          controlsPanel.classList.remove('panel-collapsed');
+        } else {
+          statusPanel.classList.add('panel-collapsed');
+          controlsPanel.classList.add('panel-collapsed');
+        }
+        syncCollapseAllButtonState();
+      });
+
+      btnWobble?.addEventListener('click', () => {
+        impulseDaruma();
+      });
+
+      btnResetView?.addEventListener('click', () => {
+        camera.position.copy(defaultCamPos);
+        controls.target.copy(defaultTarget);
+        controls.update();
+      });
+
+      // Safe GLB Exporter (uses standard MeshStandardMaterial clone for universal glTF 2.0 compliance)
+      btnExportGlb?.addEventListener('click', () => {
+        if (exportLabel) exportLabel.textContent = '打包中...';
+        try {
+          const exporter = new GLTFExporter();
+          const exportMat = new THREE.MeshStandardMaterial({
+            map: textures.colorTex,
+            metalnessMap: textures.metalTex,
+            roughnessMap: textures.roughTex,
+            bumpMap: textures.bumpTex,
+            bumpScale: 0.015,
+            metalness: 0.85,
+            roughness: 0.32,
+          });
+          const exportMesh = new THREE.Mesh(darumaGeo, exportMat);
+          exportMesh.name = 'Daruma_RoundBottom_OriginBottomCenter';
+          exportMesh.position.set(0, 0, 0);
+          exportMesh.rotation.set(0, 0, 0);
+
+          exporter.parse(
+            exportMesh,
+            (gltfBinary) => {
+              const blob = new Blob([gltfBinary], { type: 'model/gltf-binary' });
+              const url = URL.createObjectURL(blob);
+              const link = document.createElement('a');
+              link.href = url;
+              link.download = 'daruma_wide_round_bottom.glb';
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
+              URL.revokeObjectURL(url);
+              exportMat.dispose();
+              if (exportLabel) {
+                exportLabel.textContent = '已匯出!';
+                setTimeout(() => {
+                  exportLabel.textContent = '匯出 GLB';
+                }, 1800);
+              }
+            },
+            (error) => {
+              console.error('GLB Export Error:', error);
+              exportMat.dispose();
+              if (exportLabel) {
+                exportLabel.textContent = '匯出失敗';
+                setTimeout(() => {
+                  exportLabel.textContent = '匯出 GLB';
+                }, 1800);
+              }
+            },
+            { binary: true }
+          );
+        } catch (err) {
+          console.error('GLB Export Exception:', err);
+          if (exportLabel) exportLabel.textContent = '匯出 GLB';
+        }
+      });
+
+      toggleAxes?.addEventListener('change', (e) => {
+        const visible = e.target.checked;
+        originGroup.visible = visible;
+        polarGrid.visible = visible;
+        if (originLegend) originLegend.style.opacity = visible ? '1' : '0.4';
+      });
+
+      toggleRotate?.addEventListener('change', (e) => {
+        controls.autoRotate = e.target.checked;
+        controls.autoRotateSpeed = 2.0;
+      });
+
+      toggleWireframe?.addEventListener('change', (e) => {
+        darumaMat.wireframe = e.target.checked;
+      });
+
+      window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+
+      // ========================================================================
+      // 6. MAIN ANIMATION LOOP
+      // ========================================================================
+      const clock = new THREE.Clock();
+
+      function animate() {
+        requestAnimationFrame(animate);
+
+        const dt = Math.min(clock.getDelta(), 0.05);
+
+        // Damped harmonic spring physics around bottom center origin (0, 0, 0)
+        const accX = -physics.stiffness * physics.angleX - physics.damping * physics.velX;
+        const accZ = -physics.stiffness * physics.angleZ - physics.damping * physics.velZ;
+
+        physics.velX += accX * dt;
+        physics.velZ += accZ * dt;
+        physics.angleX += physics.velX * dt;
+        physics.angleZ += physics.velZ * dt;
+
+        const maxTilt = 0.70;
+        physics.angleX = Math.max(-maxTilt, Math.min(maxTilt, physics.angleX));
+        physics.angleZ = Math.max(-maxTilt, Math.min(maxTilt, physics.angleZ));
+
+        darumaPivot.rotation.x = physics.angleX;
+        darumaPivot.rotation.z = physics.angleZ;
+
+        // Rolling displacement compensation matching the wide hemispherical base
+        const rollRadius = 0.56;
+        darumaPivot.position.x = -Math.sin(physics.angleZ) * rollRadius;
+        darumaPivot.position.z = Math.sin(physics.angleX) * rollRadius;
+
+        // Update telemetry angles when status panel is expanded
+        if (statusPanel && !statusPanel.classList.contains('panel-collapsed')) {
+          const pitchDeg = (physics.angleX * 180) / Math.PI;
+          const rollDeg = (physics.angleZ * 180) / Math.PI;
+          if (telemetryPitch) {
+            telemetryPitch.textContent = `${pitchDeg >= 0 ? '+' : ''}${pitchDeg.toFixed(1)}°`;
+          }
+          if (telemetryRoll) {
+            telemetryRoll.textContent = `${rollDeg >= 0 ? '+' : ''}${rollDeg.toFixed(1)}°`;
+          }
+        }
+
+        controls.update();
+        renderer.render(scene, camera);
+      }
+
+      animate();
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      try {
+        initApp();
+      } catch (err) {
+        console.error('Initialization error:', err);
+        showFallbackError(err?.message || '載入 3D 場景時發生未預期的錯誤。');
+      }
+    });
+  </script>
+</body>
+</html>
